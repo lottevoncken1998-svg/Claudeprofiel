@@ -410,12 +410,21 @@ let herk=null, micAan=false, luistert=false;
 function status(t){ $('#status span').textContent = t; }
 function startLuisteren(){
   if(!herk || !micAan || luistert || $('#links').classList.contains('praat')) return;
-  try{ herk.start(); luistert=true; $('#links').classList.add('luistert'); status(gestart?'Ik luister...':'Ik luister. Zeg "goedemorgen".'); }catch(e){}
+  try{ herk.start(); luistert=true; $('#links').classList.add('luistert'); status(gestart?'Ik luister...':'Ik luister. Zeg "goedemorgen".'); }
+  catch(e){ if(e && e.name!=='InvalidStateError') micMislukt(); }
 }
 function stopLuisteren(){ if(herk && luistert){ try{ herk.abort(); }catch(e){} } luistert=false; $('#links').classList.remove('luistert'); }
 function hervat(){ if(micAan) startLuisteren(); else status(gestart?'Zet de microfoon aan, of klik of typ hieronder.':'Klaar. Zet de microfoon aan en zeg "goedemorgen".'); }
+const MOBIEL = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.maxTouchPoints>1 && /Mac/.test(navigator.platform));
+const INFRAME = window.top!==window;
+function losLink(){ return INFRAME ? ' <a href="'+location.href.split('#')[0]+'" target="_blank" rel="noopener" style="color:var(--cyaan);text-decoration:underline">Open de demo los</a> om het daar te proberen.' : ''; }
+function micMislukt(code){
+  micAan=false; zetMic(); stopLuisteren();
+  $('#melding').innerHTML='Praten lukt hier helaas niet'+(code?' ('+code+')':'')+'. Tik op een knop of typ hieronder, dat werkt net zo goed.'+losLink();
+  status(gestart?'Tik of typ hieronder.':'Tik op "Goedemorgen" hieronder om te beginnen.');
+}
 if(SR){
-  herk = new SR(); herk.lang='nl-NL'; herk.continuous=true; herk.interimResults=true;
+  herk = new SR(); herk.lang='nl-NL'; herk.continuous=!MOBIEL; herk.interimResults=!MOBIEL;
   herk.onresult = e=>{
     let tussen='', vast='';
     for(let i=e.resultIndex;i<e.results.length;i++){ const r=e.results[i]; if(r.isFinal) vast+=r[0].transcript; else tussen+=r[0].transcript; }
@@ -424,20 +433,27 @@ if(SR){
   };
   herk.onend = ()=>{ luistert=false; $('#links').classList.remove('luistert'); setTimeout(startLuisteren,250); };
   herk.onerror = e=>{
-    if(e.error==='not-allowed'||e.error==='service-not-allowed'){ micAan=false; zetMic(); $('#melding').textContent='De microfoon mag niet gebruikt worden. Klik of typ dan hieronder, dat werkt net zo goed.'; }
+    if(e.error==='not-allowed'||e.error==='service-not-allowed'){ micAan=false; zetMic(); stopLuisteren(); $('#melding').innerHTML='De microfoon mag niet gebruikt worden. Tik of typ dan hieronder, dat werkt net zo goed.'+losLink(); }
+    else if(e.error==='audio-capture'||e.error==='network'||e.error==='language-not-supported'){ micMislukt(e.error); }
   };
 } else {
-  $('#melding').textContent = 'Praten werkt in Chrome of Edge. In deze browser kun je klikken of typen.';
+  $('#melding').textContent = MOBIEL ? 'Praten werkt niet in deze browser. Tik op een knop of typ hieronder.' : 'Praten werkt in Chrome of Edge. In deze browser kun je klikken of typen.';
 }
 function zetMic(){
   $('#mic').classList.toggle('aan',micAan);
   $('#mic span').textContent = micAan ? 'Microfoon staat aan' : 'Microfoon aan';
 }
-$('#mic').onclick = ()=>{
-  if(!SR){ $('#melding').textContent='Praten werkt in Chrome of Edge. Klik of typ hieronder.'; return; }
-  micAan = !micAan; zetMic();
+$('#mic').onclick = async ()=>{
+  if(!SR){ $('#melding').innerHTML=(MOBIEL?'Praten werkt niet in deze browser.':'Praten werkt in Chrome of Edge.')+' Tik of typ hieronder.'+losLink(); return; }
+  if(micAan){ micAan=false; zetMic(); stopLuisteren(); hervat(); return; }
   if('speechSynthesis' in window){ const u=new SpeechSynthesisUtterance(''); speechSynthesis.speak(u); } // stem ontgrendelen
-  if(micAan) startLuisteren(); else { stopLuisteren(); hervat(); }
+  $('#melding').textContent='';
+  // eerst expliciet toestemming vragen, zodat ook mobiel de vraag toont
+  if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+    try{ const st=await navigator.mediaDevices.getUserMedia({audio:true}); st.getTracks().forEach(t=>t.stop()); }
+    catch(err){ micAan=false; zetMic(); $('#melding').innerHTML='Ik kreeg geen toestemming voor de microfoon. Tik of typ hieronder, dat werkt net zo goed.'+losLink(); return; }
+  }
+  micAan=true; zetMic(); startLuisteren();
 };
 $('#typ').onsubmit = e=>{ e.preventDefault(); const v=$('#invoer').value.trim(); if(v){ $('#invoer').value=''; hoor(v,true); } };
 zetChips(['Goedemorgen']);
