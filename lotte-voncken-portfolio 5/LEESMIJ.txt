@@ -1,5 +1,0 @@
-Lotte Voncken - AI-portfolio
-
-Upload alle bestanden uit deze map naar de hoofdmap van je GitHub-repository
-(of sleep de map naar Netlify Drop). index.html is de startpagina.
-De site is beveiligd met een wachtwoord.
